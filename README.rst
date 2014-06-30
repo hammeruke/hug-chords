@@ -1,6 +1,6 @@
-A few ukulele arrangements
-==========================
+Hammersmith Ukulele Group arrangements
+======================================
 
-Can be rendered to pdf using my beefed-up version of chordlab__.
+Can be rendered to pdf using our beefed-up version of chordlab__.
 
-.. __: https://github.com/dvarrazzo/chordlab
+.. __: https://github.com/hammeruke/chordlab
