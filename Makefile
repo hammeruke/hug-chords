@@ -2,7 +2,7 @@ CHORDS=$(wildcard chords/*.cho) $(wildcard chords/*/*.cho)
 PDFS=$(patsubst chords/%.cho,pdfs/%.pdf,$(CHORDS))
 DIRS=$(shell find chords -type d)
 SONGBOOKS=$(patsubst chords/%,pdfs/%-songbook.pdf,$(DIRS))
-CHORDLAB=chordlab/chordlab
+CHORDLAB=chordlab
 STYLE=style/hammersmith.ini
 
 .PHONY: clean
