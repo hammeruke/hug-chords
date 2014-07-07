@@ -5,6 +5,6 @@
 [submodule "style/chunk"]
 	path = style/chunk
 	url = https://github.com/theleagueof/chunk.git
-[submodule "style/prociono"]
-	path = style/prociono
-	url = https://github.com/theleagueof/prociono.git
+[submodule "style/junction"]
+	path = style/junction
+	url = https://github.com/theleagueof/junction.git
