@@ -13,7 +13,7 @@ pdfs/%.pdf: chords/%.cho $(STYLE)
 	mkdir -p `dirname $@`
 	$(CHORDLAB) -p 842x595 --style $(STYLE) --ukulele -o $@ $<
 
-pdfs/%-songbook.pdf: $(wildcard chords/%/*) $(STYLE)
+pdfs/%-songbook.pdf: chords/%/*.cho $(STYLE)
 	mkdir -p `dirname $@`
 	$(CHORDLAB) -p 842x595 --style $(STYLE) --ukulele -o $@ chords/$*/*.cho
 
