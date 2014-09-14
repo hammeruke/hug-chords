@@ -14,6 +14,16 @@ The usage is something like::
 
 See `sample.rst` for an input file example.
 
+UPDATE: nothing works here!
+
+It seems working ok with the current sample, but as soon as you add a
+table of content and a title, so the documents needs more than one pass,
+the program crashes and burns.
+
+Probably we shouldn't hack on the page counter but create placeholders in the
+document to allow multiple passes to get consistent results. I haven't grokked
+the platypus model yet.
+
 """
 
 #
