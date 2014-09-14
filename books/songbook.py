@@ -14,16 +14,6 @@ The usage is something like::
 
 See `sample.rst` for an input file example.
 
-UPDATE: nothing works here!
-
-It seems working ok with the current sample, but as soon as you add a
-table of content and a title, so the documents needs more than one pass,
-the program crashes and burns.
-
-Probably we shouldn't hack on the page counter but create placeholders in the
-document to allow multiple passes to get consistent results. I haven't grokked
-the platypus model yet.
-
 """
 
 #
@@ -56,20 +46,13 @@ directives.register_directive("include-pdf", IncludePdf)
 # will be performed later, when the flowable's apply() is called.
 #
 
-from collections import namedtuple
-
 from rst2pdf.basenodehandler import NodeHandler
-from reportlab.platypus import ActionFlowable
 
 
 class IncludedPdfElement(Element):
-    children = ()
-
     #def gen_flowable(self, style_options):
     def gen_flowable(self):
-        f = IncludedPdfFlowable()
-        f.attributes = self.attributes
-        return f
+        return IncludedPdfFlowable(self.attributes)
 
 class HandleIncludedPdf(NodeHandler, IncludedPdfElement):
     def gather_elements(self, client, node, style):
@@ -86,34 +69,42 @@ class HandleIncludedPdf(NodeHandler, IncludedPdfElement):
 # TODO: Probably must add a toc element of some sort
 #
 
+from collections import namedtuple
+from reportlab.platypus.doctemplate import FrameActionFlowable
+from reportlab.platypus import PageBreak
 from pyPdf import PdfFileReader, PdfFileWriter
 
-Joint = namedtuple("Joint", "after_page added_pages npages file")
+Joint = namedtuple("Joint", "start length file")
 joints = []
-added_pages = 0
 
-class IncludedPdfFlowable(ActionFlowable):
-    def apply(self, frame):
-        global added_pages
+class IncludedPdfFlowable(FrameActionFlowable):
+    def __init__(self, attrs):
+        self.attrs = attrs
 
+    def frameAction(self, frame):
         # Read the number of pages of the doc to merge
-        fn = self.attributes['filename']
-        f = open(fn)
-        pdf = PdfFileReader(f)
-        npages = pdf.getNumPages()
-        f.close()
+        # Only once: we end up here once per document pass.
+        fn = self.attrs['filename']
+        if not hasattr(self, 'npages'):
+            f = open(fn)
+            pdf = PdfFileReader(f)
+            self.npages = pdf.getNumPages()
+            f.close()
 
-        # Where to record this document
-        after_page = frame.page - (frame.frame._atTop and 1 or 0)
-        joints.append(Joint(after_page, added_pages, npages, fn))
-        added_pages += npages
+        # Leave as many pages empty as the document read
+        if not frame._atTop:
+            frame.add_generated_content(PageBreak())
+        for i in range(self.npages):
+            frame.add_generated_content(PageBreak())
 
-        # finish the page if it was already started
-        if not frame.frame._atTop:
-            frame.handle_pageBreak()
-        # skip as many pages
-        for i in xrange(npages):
-            frame.handle_pageBegin()
+        # Mistery. Base zero.
+        start = frame._pagenum - (frame._atTop and 1 or 0)
+
+        # if we are on a second run clear the stored joints position
+        # and start again
+        if joints and joints[-1].start > start:
+            del joints[:]
+        joints.append(Joint(start, self.npages, fn))
 
 
 #
@@ -121,36 +112,40 @@ class IncludedPdfFlowable(ActionFlowable):
 # After the creation of the original document merge it with the other pieces.
 #
 
+import os
 from rst2pdf import createpdf
 
 class JoiningRstToPdf(createpdf.RstToPdf):
     def createPdf(self, output, **kwargs):
-        super(JoiningRstToPdf, self).createPdf(output=output, **kwargs)
+        tmpfile = output + '.tmp'
+        super(JoiningRstToPdf, self).createPdf(output=tmpfile, **kwargs)
 
         openfiles = []  # the pdf libraries wants the files open when writing
 
         # Open the file just generated
-        f = open(output)
+        f = open(tmpfile)
         openfiles.append(f)
         doc = PdfFileReader(f)
 
         pdf = PdfFileWriter()
-        used_page = 0       # pages used in the original doc
+        docpage = 0
         for joint in joints:
             # Add the document pages before this joint
-            for i in range(used_page, joint.after_page - joint.added_pages):
+            for i in range(docpage, joint.start):
                 pdf.addPage(doc.getPage(i))
-                used_page += 1
 
             # add the merged document
             f1 = open(joint.file)
             openfiles.append(f1)
             doc1 = PdfFileReader(f1)
+            assert doc1.getNumPages() == joint.length
             for i in xrange(doc1.getNumPages()):
                 pdf.addPage(doc1.getPage(i))
 
+            docpage = joint.start + joint.length
+
         # Add the last pages of the doc
-        for i in range(used_page, doc.getNumPages()):
+        for i in range(docpage, doc.getNumPages()):
             pdf.addPage(doc.getPage(i))
 
         # Write the joined file
@@ -161,6 +156,9 @@ class JoiningRstToPdf(createpdf.RstToPdf):
         # Now close everything you got open
         for f in openfiles:
             f.close()
+
+        os.unlink(tmpfile)
+
 
 def install(createpdf, options):
     createpdf.RstToPdf = JoiningRstToPdf
