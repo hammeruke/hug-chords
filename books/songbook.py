@@ -97,7 +97,6 @@ class IncludedPdfFlowable(ActionFlowable):
         after_page = frame.page - (frame.frame._atTop and 1 or 0)
         joints.append(Joint(after_page, added_pages, npages, fn))
         added_pages += npages
-        print joints[-1]
 
         # finish the page if it was already started
         if not frame.frame._atTop:
@@ -124,7 +123,6 @@ class JoiningRstToPdf(createpdf.RstToPdf):
         f = open(output)
         openfiles.append(f)
         doc = PdfFileReader(f)
-        print "npages:", doc.getNumPages()
 
         pdf = PdfFileWriter()
         used_page = 0       # pages used in the original doc
