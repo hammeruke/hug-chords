@@ -24,6 +24,9 @@ from docutils.parsers import rst
 from docutils.nodes import Element
 from docutils.parsers.rst import directives
 
+class IncludedPdfElement(Element):
+    pass
+
 class IncludePdf(rst.Directive):
     """A custom directive that allows to include an entire pdf in the document
     """
@@ -42,6 +45,27 @@ class IncludePdf(rst.Directive):
 directives.register_directive("include-pdf", IncludePdf)
 
 
+class SongsheetElement(Element):
+    pass
+
+class Songsheet(rst.Directive):
+    """Directive to include a songsheet in a document
+    """
+    required_arguments = 1
+    optional_arguments = 0
+    final_argument_whitespace = True
+    option_spec = {
+        'title': directives.unchanged,
+        'render-args': directives.unchanged }
+    has_content = False
+
+    def run(self):
+        node = SongsheetElement(filename=self.arguments[0], **self.options)
+        return [node]
+
+directives.register_directive("song", Songsheet)
+
+
 #
 # This is the bit that merges rst2pdf with reportlab. Here we only build the
 # new flowable when we find the docutils node representing it. The real action
@@ -50,14 +74,15 @@ directives.register_directive("include-pdf", IncludePdf)
 
 from rst2pdf.basenodehandler import NodeHandler
 
-class IncludedPdfElement(Element):
-    pass
-
 class HandleIncludedPdf(NodeHandler, IncludedPdfElement):
     def gather_elements(self, client, node, style):
         level = client.depth
         return [ IncludedPdfFlowable(node, level, style) ]
 
+class HandleSongsheet(NodeHandler, SongsheetElement):
+    def gather_elements(self, client, node, style):
+        level = client.depth
+        return [ SongsheetFlowable(node, level, style) ]
 
 #
 # The flowable lives in reportlab. Maintain the page count after the inclusion
@@ -81,11 +106,13 @@ class IncludedPdfFlowable(FrameActionFlowable):
         self.style = style
 
     def frameAction(self, frame):
+        self.include_pdf(frame, self.node.attributes['filename'])
+
+    def include_pdf(self, frame, filename):
         # Read the number of pages of the doc to merge
         # Only once: we end up here once per document pass.
-        fn = self.node.attributes['filename']
         if not hasattr(self, 'npages'):
-            f = open(fn)
+            f = open(filename)
             pdf = PdfFileReader(f)
             self.npages = pdf.getNumPages()
             f.close()
@@ -116,7 +143,81 @@ class IncludedPdfFlowable(FrameActionFlowable):
         # and start again
         if joints and joints[-1].start > start:
             del joints[:]
-        joints.append(Joint(start, self.npages, fn))
+        joints.append(Joint(start, self.npages, filename))
+
+
+import re
+import shlex
+import atexit
+from tempfile import NamedTemporaryFile
+from subprocess import check_call
+
+class SongsheetFlowable(IncludedPdfFlowable):
+    _tempfile = None
+    _page = None
+
+    def frameAction(self, frame):
+        fn = self.node.attributes['filename']
+        # the mystery formula...
+        page = frame._pagenum - (frame._atTop and 1 or 0) + 1
+
+        # don't re-render the songsheet pdf if the page number hasn't changed
+        if page != self._page:
+            self._page = page
+            self.render_cho(frame, fn)
+
+        if 'title' not in self.node.attributes:
+            self.node.attributes['title'] = self.get_title(fn)
+
+        self.include_pdf(frame, self.get_temp_filename())
+
+    def render_cho(self, page, filename):
+        cmdline = [ '../../env/bin/chordlab']   # TODO: stub
+        # TODO: also fix chordlab search for fonts in the stylesheet
+        # paths should be relative from the stylesheet, not from cwd.
+        if 'render-args' in self.node.attributes:
+            cmdline.extend(shlex.split(self.node.attributes['render-args']))
+
+        # TODO: pass a start page number to chordlab
+        # cmdline.extend(['--start-page', str(page)])
+
+        outfn = self.get_temp_filename()
+        cmdline.extend(['-o', outfn])
+        cmdline.append(filename)
+
+        check_call(cmdline)
+
+    def get_temp_filename(self):
+        if self._tempfile is not None:
+            return self._tempfile.name
+
+        t = self._tempfile = NamedTemporaryFile(suffix='.pdf', delete=False)
+        t.close()
+        atexit.register(os.unlink, t.name)
+        return t.name
+
+    def get_title(self, fn):
+        # Parse the .cho to get title and subtitle
+        title = author = None
+        rex = re.compile(r'^\s*{(t|st):([^}]+)}\s*$')
+        for line in open(fn):
+            m = rex.match(line)
+            if m is None: continue
+            if m.group(1) == 't':
+                title = m.group(2)
+            elif m.group(1) == 'st':
+                author = m.group(2)
+            if title is not None and author is not None:
+                break
+
+        if not title:
+            title = os.path.splitext(os.path.split(fn)[-1])[0].title() \
+                    .replace('-', ' ')
+
+        if author:
+            title += ' - ' + author
+
+        return title
 
 
 class PdfTocEntry(Heading):
