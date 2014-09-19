@@ -13,6 +13,8 @@ Easy songs
 ----------
 
 .. include-pdf:: ../pdfs/hug/valerie.pdf
+    :title: Valerie - Amy Whinehouse
+
 .. include-pdf:: ../pdfs/hug/grapevine.pdf
 
 More songs
